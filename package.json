@@ -1,18 +1,12 @@
 {
-  "name": "maas-crypto-stealer",
+  "name": "bookmark-service", 
   "version": "1.0.0",
-  "description": "Malware-as-a-Service crypto wallet stealer",
-  "main": "enhanced-backend.js",
-  "license": "MIT",
+  "main": "server.js",
   "scripts": {
-    "start": "node enhanced-backend.js",
-    "build": "echo 'No build step required'",
-    "bot": "node maas-bot.js",
-    "dev": "nodemon enhanced-backend.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "node-telegram-bot-api": "^0.66.0",
     "node-fetch": "^2.7.0",
     "bs58": "^5.0.0"
   },
